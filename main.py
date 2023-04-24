@@ -48,7 +48,7 @@ def getcard(message):
                                                                                                                    len(directory_monke_nfts) - 1)]))
     card = open(card_path, 'rb')
     bot.send_photo(message.chat.id, photo=card)
-    bot.send_message('Держи свою карточку, приходи за следующей через 4 часа :)')
+    bot.send_message(message.from_user.id, 'Держи свою карточку, приходи за следующей через 4 часа :)')
 
 
 def description(message):
