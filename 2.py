@@ -3,6 +3,7 @@ import time
 import telebot
 from telebot import types
 import random
+import sqlite3
 
 bot = telebot.TeleBot('6151807605:AAFRrkIsv5kNVFwVcUZ20VFvhDgBtjl1viA')
 directory_images = ['monke_memes', 'monke_nft', 'monke_mini', 'monke_cartoons', 'monke_games']
@@ -24,14 +25,15 @@ directory_monke_cartoons = [
 directory_monke_games = [
     '1.jpg', '2.jpg', '3.jpg', '4.jpg', '5.jpg', '6.jpg', '7.jpg', '8.jpg', '9.jpg', '10.jpg'
 ]
-cards_bank = []
-monkey_coins = 0
-tim = time.time()
+con = sqlite3.connect('db/monke_collectors.db')
+cur = con.cursor()
+r = cur.execute('''SELECT * FROM users''')
+info = {i[1]: [i[2], i[3], i[4]] for i in r}
+con.close()
 
 
 def timer(st, chat):
-    global tim
-    tim = st
+    info[chat][1] = st
     while True:
         t = time.time()
         if st + 15 <= t:
@@ -44,6 +46,8 @@ thread1 = threading.Thread(target=timer, args=(time.time(),), daemon=True)
 
 @bot.message_handler(commands=['start'])
 def start(message):
+    if message.chat.id not in info:
+        info[message.chat.id] = ['', time.time(), 0]
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     btn1 = types.KeyboardButton("/getcard")
     markup.add(btn1)
@@ -54,18 +58,21 @@ def start(message):
 
 @bot.message_handler(commands=['getcard'])
 def getcard(message):
+    con = sqlite3.connect('db/monke_collectors.db')
+    cur = con.cursor()
     global thread1
-    global tim
+    if message.chat.id not in info:
+        info[message.chat.id] = ['', time.time(), 0]
     if thread1.is_alive():
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-        b = int(time.time() - tim)
+        b = int(time.time() - info[message.chat.id][1])
         h, m, s = b // 3600, b // 60 % 60, 15 - b % 60
         bot.send_message(message.from_user.id,
                          'К сожалению 4 часа еще не прошло\n'
                          f'приходи через {h}-{m}-{s}',
                          reply_markup=markup)
     else:
-        global monkey_coins
+        info[message.chat.id][1] = time.time()
         flag_nft = False
         flag_memes = False
         flag_cartoons = False
@@ -80,7 +87,7 @@ def getcard(message):
         card_path = ''
 
         if choosen_directory == monke_memes:
-            monkey_coins += 500
+            info[message.chat.id][2] += 500
 
             flag_memes = True
             card_path = (
@@ -93,7 +100,7 @@ def getcard(message):
                                 directory_monke_memes) - 1)]))
         elif choosen_directory == monke_nfts:
             flag_nft = True
-            monkey_coins += 1000
+            info[message.chat.id][2] += 1000
             card_path = (
                 r'monke_images/{}/{}'.format(
                     monke_nfts,
@@ -104,7 +111,7 @@ def getcard(message):
                                 directory_monke_nfts) - 1)]))
         elif choosen_directory == monke_mini:
             flag_mini = True
-            monkey_coins += 250
+            info[message.chat.id][2] += 250
             card_path = (
                 r'monke_images/{}/{}'.format(
                     monke_mini,
@@ -115,7 +122,7 @@ def getcard(message):
                                 directory_monke_mini) - 1)]))
         elif choosen_directory == monke_cartoons:
             flag_cartoons = True
-            monkey_coins += 750
+            info[message.chat.id][2] += 750
             card_path = (
                 r'monke_images/{}/{}'.format(
                     monke_cartoons,
@@ -126,7 +133,7 @@ def getcard(message):
                                 directory_monke_cartoons) - 1)]))
         elif choosen_directory == monke_games:
             flag_games = True
-            monkey_coins += 1500
+            info[message.chat.id][2] += 1500
             card_path = (
                 r'monke_images/{}/{}'.format(
                     monke_games,
@@ -137,15 +144,21 @@ def getcard(message):
                                 directory_monke_games) - 1)]))
 
         card = open(card_path, 'rb')
+        if f'{card_path.split("/")[1]}#{card_path.split("/")[2].split(".")[0]}' not in \
+                info[message.chat.id][0]:
+            info[message.chat.id][0] = ','.join([info[message.chat.id][0],
+                                                 f'{card_path.split("/")[1]}#{card_path.split("/")[2].split(".")[0]}'])
+
         if flag_nft:
-            if card_path in cards_bank:
+            if card_path in info[message.chat.id][0]:
                 bot.send_photo(message.chat.id, photo=card)
                 markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
                 btn1 = types.KeyboardButton('/back2menu')
                 markup.add(btn1)
                 bot.send_message(message.from_user.id,
                                  '🙈К сожалению, такая карточка у тебя уже есть, приходи за следующей через 4 часа :) \n'
-                                 '💰Всего: {} MC(+1000🪙 MonkeyCoins)🙈'.format(monkey_coins),
+                                 '💰Всего: {} MC(+1000🪙 MonkeyCoins)🙈'.format(
+                                     info[message.chat.id][2]),
                                  reply_markup=markup)
             else:
                 bot.send_photo(message.chat.id, photo=card)
@@ -154,18 +167,19 @@ def getcard(message):
                 markup.add(btn1)
                 bot.send_message(message.from_user.id,
                                  '🙈Держи свою карточку, приходи за следующей через 4 часа :) \n'
-                                 '💰Всего: {} MC(+1000🪙 MonkeyCoins)🙈'.format(monkey_coins),
+                                 '💰Всего: {} MC(+1000🪙 MonkeyCoins)🙈'.format(
+                                     info[message.chat.id][2]),
                                  reply_markup=markup)
-                cards_bank.append(card_path)
         elif flag_memes:
-            if card_path in cards_bank:
+            if card_path in info[message.chat.id][0]:
                 bot.send_photo(message.chat.id, photo=card)
                 markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
                 btn1 = types.KeyboardButton('/back2menu')
                 markup.add(btn1)
                 bot.send_message(message.from_user.id,
                                  '🙈К сожалению, такая карточка у тебя уже есть, приходи за следующей через 4 часа :) \n'
-                                 '💰Всего: {} MC(+500🪙 MonkeyCoins)🙈'.format(monkey_coins),
+                                 '💰Всего: {} MC(+500🪙 MonkeyCoins)🙈'.format(
+                                     info[message.chat.id][2]),
                                  reply_markup=markup)
             else:
                 bot.send_photo(message.chat.id, photo=card)
@@ -174,18 +188,19 @@ def getcard(message):
                 markup.add(btn1)
                 bot.send_message(message.from_user.id,
                                  '🙈Держи свою карточку, приходи за следующей через 4 часа :) \n'
-                                 '💰Всего: {} MC(+500🪙 MonkeyCoins)🙈'.format(monkey_coins),
+                                 '💰Всего: {} MC(+500🪙 MonkeyCoins)🙈'.format(
+                                     info[message.chat.id][2]),
                                  reply_markup=markup)
-                cards_bank.append(card_path)
         elif flag_mini:
-            if card_path in cards_bank:
+            if card_path in info[message.chat.id][0]:
                 bot.send_photo(message.chat.id, photo=card)
                 markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
                 btn1 = types.KeyboardButton('/back2menu')
                 markup.add(btn1)
                 bot.send_message(message.from_user.id,
                                  '🙈К сожалению, такая карточка у тебя уже есть, приходи за следующей через 4 часа :) \n'
-                                 '💰Всего: {} MC(+250🪙 MonkeyCoins)🙈'.format(monkey_coins),
+                                 '💰Всего: {} MC(+250🪙 MonkeyCoins)🙈'.format(
+                                     info[message.chat.id][2]),
                                  reply_markup=markup)
             else:
                 bot.send_photo(message.chat.id, photo=card)
@@ -194,18 +209,19 @@ def getcard(message):
                 markup.add(btn1)
                 bot.send_message(message.from_user.id,
                                  '🙈Держи свою карточку, приходи за следующей через 4 часа :) \n'
-                                 '💰Всего: {} MC(+250🪙 MonkeyCoins)🙈'.format(monkey_coins),
+                                 '💰Всего: {} MC(+250🪙 MonkeyCoins)🙈'.format(
+                                     info[message.chat.id][2]),
                                  reply_markup=markup)
-                cards_bank.append(card_path)
         elif flag_cartoons:
-            if card_path in cards_bank:
+            if card_path in info[message.chat.id][0]:
                 bot.send_photo(message.chat.id, photo=card)
                 markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
                 btn1 = types.KeyboardButton('/back2menu')
                 markup.add(btn1)
                 bot.send_message(message.from_user.id,
                                  '🙈К сожалению, такая карточка у тебя уже есть, приходи за следующей через 4 часа :) \n'
-                                 '💰Всего: {} MC(+750🪙 MonkeyCoins)🙈'.format(monkey_coins),
+                                 '💰Всего: {} MC(+750🪙 MonkeyCoins)🙈'.format(
+                                     info[message.chat.id][2]),
                                  reply_markup=markup)
             else:
                 bot.send_photo(message.chat.id, photo=card)
@@ -214,18 +230,19 @@ def getcard(message):
                 markup.add(btn1)
                 bot.send_message(message.from_user.id,
                                  '🙈Держи свою карточку, приходи за следующей через 4 часа :) \n'
-                                 '💰Всего: {} MC(+750🪙 MonkeyCoins)🙈'.format(monkey_coins),
+                                 '💰Всего: {} MC(+750🪙 MonkeyCoins)🙈'.format(
+                                     info[message.chat.id][2]),
                                  reply_markup=markup)
-                cards_bank.append(card_path)
         elif flag_games:
-            if card_path in cards_bank:
+            if card_path in info[message.chat.id][0]:
                 bot.send_photo(message.chat.id, photo=card)
                 markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
                 btn1 = types.KeyboardButton('/back2menu')
                 markup.add(btn1)
                 bot.send_message(message.from_user.id,
                                  '🙈К сожалению, такая карточка у тебя уже есть, приходи за следующей через 4 часа :) \n'
-                                 '💰Всего: {} MC(+1500🪙 MonkeyCoins)🙈'.format(monkey_coins),
+                                 '💰Всего: {} MC(+1500🪙 MonkeyCoins)🙈'.format(
+                                     info[message.chat.id][2]),
                                  reply_markup=markup)
             else:
                 bot.send_photo(message.chat.id, photo=card)
@@ -234,9 +251,19 @@ def getcard(message):
                 markup.add(btn1)
                 bot.send_message(message.from_user.id,
                                  '🙈Держи свою карточку, приходи за следующей через 4 часа :) \n'
-                                 '💰Всего: {} MC(+1500🪙 MonkeyCoins)🙈'.format(monkey_coins),
+                                 '💰Всего: {} MC(+1500🪙 MonkeyCoins)🙈'.format(
+                                     info[message.chat.id][2]),
                                  reply_markup=markup)
-                cards_bank.append(card_path)
+        if info[message.chat.id][0][0] == ',':
+            info[message.chat.id][0] = info[message.chat.id][0][1:]
+        if info[message.chat.id][0].count(',') == 0:
+            cur.execute(
+                f'INSERT INTO users(chat_id,cards_id,timer) VALUES({message.chat.id},"{info[message.chat.id][0]}",{info[message.chat.id][1]})')
+        else:
+            cur.execute(f'''UPDATE users
+    SET cards_id = "{info[message.chat.id][0]}", timer = {info[message.chat.id][1]}, coins = {info[message.chat.id][2]}
+    WHERE chat_id = {message.chat.id}''')
+        con.commit()
         thread1 = threading.Thread(target=timer, args=(time.time(), message.chat.id), daemon=True)
         thread1.start()
 
@@ -258,22 +285,13 @@ def back2menu(message):
 
 @bot.message_handler(commands=['cardsbank'])
 def cardsbank(message):
-    global cards_bank
-    counter_of_card = 1
-    card_num = 0
-    for card in cards_bank:
-        for category in directory_images:
-            if category in card:
-                if card[-6] in '0123456789' and card[-7] in '0123456789':
-                    card_num = card[-7] + card[-6]
-                elif card[-5] in '0123456789' and card[-6] in '0123456789':
-                    card_num = card[-6] + card[-5]
-                elif card[-5] in '0123456789':
-                    card_num = card[-5]
-                bot.send_message(message.from_user.id,
-                                 '{}. {}#{}'.format(counter_of_card, category.upper(),
-                                                    int(card_num)))
-                counter_of_card += 1
+    print(info)
+    if message.chat.id not in info:
+        info[message.chat.id] = ['', time.time(), 0]
+    cards = info[message.chat.id][0].split(',')
+    for num in range(len(cards)):
+        bot.send_message(message.from_user.id,
+                         '{}. {}'.format(num + 1, cards[num]))
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     btn1 = types.KeyboardButton('/back2menu')
     markup.add(btn1)
